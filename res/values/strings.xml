@@ -6988,4 +6988,9 @@
 
     <string name="primary_sub_select_title">Default 4G/3G Subscription</string>
     <string name="select_sim_card">Select SIM card</string>
+
+    <!-- Advanced reboot options -->
+    <string name="advanced_reboot_title">Advanced reboot</string>
+    <string name="advanced_reboot_summary">When unlocked, include options in the power menu for rebooting into recovery, bootloader or to do a software reboot</string>
+
 </resources>

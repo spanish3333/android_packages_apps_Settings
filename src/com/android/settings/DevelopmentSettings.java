@@ -159,6 +159,7 @@ public class DevelopmentSettings extends SettingsPreferenceFragment
     private static final String MOBILE_DATA_ALWAYS_ON = "mobile_data_always_on";
 
     private static final String INACTIVE_APPS_KEY = "inactive_apps";
+    private static final String ADVANCED_REBOOT_KEY = "advanced_reboot";
 
     private static final String OPENGL_TRACES_KEY = "enable_opengl_traces";
 
@@ -255,6 +256,7 @@ public class DevelopmentSettings extends SettingsPreferenceFragment
     private ListPreference mAppProcessLimit;
 
     private SwitchPreference mShowAllANRs;
+    private SwitchPreference mAdvancedReboot;
 
     private DropDownPreference mNightModePreference;
 
@@ -327,13 +329,14 @@ public class DevelopmentSettings extends SettingsPreferenceFragment
         mDebugViewAttributes = findAndInitSwitchPref(DEBUG_VIEW_ATTRIBUTES);
         mPassword = (PreferenceScreen) findPreference(LOCAL_BACKUP_PASSWORD);
         mAllPrefs.add(mPassword);
-
+        mAdvancedReboot = findAndInitSwitchPref(ADVANCED_REBOOT_KEY);
 
         if (!android.os.Process.myUserHandle().equals(UserHandle.OWNER)) {
             disableForUser(mEnableAdb);
             disableForUser(mClearAdbKeys);
             disableForUser(mEnableTerminal);
             disableForUser(mPassword);
+            disableForUser(mAdvancedReboot);
         }
 
         mDebugAppPref = findPreference(DEBUG_APP_KEY);
@@ -627,7 +630,24 @@ public class DevelopmentSettings extends SettingsPreferenceFragment
         updateMobileDataAlwaysOnOptions();
         updateSimulateColorSpace();
         updateUSBAudioOptions();
+        updateAdvancedRebootOptions();
     }
+
+    private void resetAdvancedRebootOptions() {
+        Settings.Secure.putInt(getActivity().getContentResolver(),
+                Settings.Secure.ADVANCED_REBOOT, 0);
+    }
+
+    private void writeAdvancedRebootOptions() {
+        Settings.Secure.putInt(getActivity().getContentResolver(),
+                Settings.Secure.ADVANCED_REBOOT,
+                mAdvancedReboot.isChecked() ? 1 : 0);
+    }
+
+    private void updateAdvancedRebootOptions() {
+        mAdvancedReboot.setChecked(Settings.Secure.getInt(getActivity().getContentResolver(),
+                Settings.Secure.ADVANCED_REBOOT, 1) != 0);
+     }
 
     private void resetDangerousOptions() {
         mDontPokeProperties = true;
@@ -653,6 +673,7 @@ public class DevelopmentSettings extends SettingsPreferenceFragment
         updateAllOptions();
         mDontPokeProperties = false;
         pokeSystemProperties();
+        resetAdvancedRebootOptions();
     }
 
     private void updateHdcpValues() {
@@ -1708,6 +1729,8 @@ public class DevelopmentSettings extends SettingsPreferenceFragment
             writeUSBAudioOptions();
         } else if (INACTIVE_APPS_KEY.equals(preference.getKey())) {
             startInactiveAppsFragment();
+        } else if (preference == mAdvancedReboot) {
+            writeAdvancedRebootOptions();
         } else {
             return super.onPreferenceTreeClick(preferenceScreen, preference);
         }
