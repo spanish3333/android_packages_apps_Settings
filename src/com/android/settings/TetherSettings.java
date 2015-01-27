@@ -52,18 +52,37 @@ import com.android.settingslib.TetherUtil;
 
 import java.util.ArrayList;
 import java.util.concurrent.atomic.AtomicReference;
-
+import java.util.Locale;
+import android.net.wifi.p2p.WifiP2pConfig;
+import android.net.wifi.p2p.WifiP2pInfo;
+import android.net.wifi.p2p.WifiP2pDevice;
+import android.net.wifi.p2p.WifiP2pDeviceList;
+import android.net.wifi.p2p.WifiP2pGroup;
+import android.net.wifi.p2p.WifiP2pGroupList;
+import android.net.wifi.p2p.WifiP2pManager;
+import android.net.wifi.p2p.WifiP2pManager.PeerListListener;
+import android.net.wifi.p2p.WifiP2pManager.PersistentGroupInfoListener;
+import android.provider.Settings.Global;
+import android.net.wifi.WifiManager;
+import android.widget.Toast;
+import android.preference.CheckBoxPreference;
+import android.text.Html;
+import android.content.SharedPreferences;
+import android.preference.PreferenceManager;
+import android.util.Log;
 /*
  * Displays preferences for Tethering.
  */
 public class TetherSettings extends SettingsPreferenceFragment
-        implements DialogInterface.OnClickListener, Preference.OnPreferenceChangeListener {
+        implements PersistentGroupInfoListener, DialogInterface.OnClickListener, Preference.OnPreferenceChangeListener {
     private static final String TAG = "TetherSettings";
 
     private static final String USB_TETHER_SETTINGS = "usb_tether_settings";
     private static final String ENABLE_WIFI_AP = "enable_wifi_ap";
     private static final String ENABLE_BLUETOOTH_TETHERING = "enable_bluetooth_tethering";
+    private static final String ENABLE_P2PGO_TETHERING = "enable_p2pgo_tethering";
     private static final String TETHER_CHOICE = "TETHER_TYPE";
+    private static final boolean DBG = true;
 
     private static final int DIALOG_AP_SETTINGS = 1;
 
@@ -73,6 +92,7 @@ public class TetherSettings extends SettingsPreferenceFragment
     private SwitchPreference mEnableWifiAp;
 
     private SwitchPreference mBluetoothTether;
+    private SwitchPreference mP2pGoTether;
 
     private BroadcastReceiver mTetherChangeReceiver;
 
@@ -85,6 +105,8 @@ public class TetherSettings extends SettingsPreferenceFragment
 
     private static final String WIFI_AP_SSID_AND_SECURITY = "wifi_ap_ssid_and_security";
     private static final int CONFIG_SUBTEXT = R.string.wifi_tether_configure_subtext;
+    private static final int CONFIG_SSID = R.string.p2p_go_tether_ssid;
+    private static final int CONFIG_PASSPHRASE = R.string.p2p_go_tether_passphrase;
 
     private String[] mSecurityType;
     private Preference mCreateNetwork;
@@ -107,6 +129,17 @@ public class TetherSettings extends SettingsPreferenceFragment
     private static final int PROVISION_REQUEST = 0;
 
     private boolean mUnavailable;
+    //MHS P2P Go
+    private WifiP2pManager mWifiP2pManager;
+    private WifiP2pManager.Channel mChannel;
+    private WifiP2pGroup mConnectedGroup;
+    static final int ENABLE_AUTO_GO = 1;
+    static final int DISABLE_AUTO_GO = 0;
+    static boolean mAutoGoState = false;
+    static String p2pNetworkName = null;
+    static String p2pPassphrase = null;
+
+    private SharedPreferences mPrefs;
 
     @Override
     protected int getMetricsCategory() {
@@ -143,6 +176,7 @@ public class TetherSettings extends SettingsPreferenceFragment
         Preference wifiApSettings = findPreference(WIFI_AP_SSID_AND_SECURITY);
         mUsbTether = (SwitchPreference) findPreference(USB_TETHER_SETTINGS);
         mBluetoothTether = (SwitchPreference) findPreference(ENABLE_BLUETOOTH_TETHERING);
+        mP2pGoTether = (SwitchPreference) findPreference(ENABLE_P2PGO_TETHERING);
 
         ConnectivityManager cm =
                 (ConnectivityManager)getSystemService(Context.CONNECTIVITY_SERVICE);
@@ -178,6 +212,20 @@ public class TetherSettings extends SettingsPreferenceFragment
             }
         }
 
+        //MHS P2P GO
+        mPrefs = PreferenceManager.getDefaultSharedPreferences (activity.getApplicationContext());
+        mWifiP2pManager = (WifiP2pManager) getSystemService(Context.WIFI_P2P_SERVICE);
+        if (mWifiP2pManager != null) {
+            mChannel = mWifiP2pManager.initialize(activity, getActivity().getMainLooper(), null);
+            if (mChannel == null) {
+                //Failure to set up connection
+                Log.e(TAG, "Failed to set up connection with wifi p2p service");
+                mWifiP2pManager = null;
+                getPreferenceScreen().removePreference(mP2pGoTether);
+            }
+        } else {
+            Log.e(TAG, "mWifiP2pManager context is null !");
+        }
         mProvisionApp = getResources().getStringArray(
                 com.android.internal.R.array.config_mobile_hotspot_provision_app);
     }
@@ -277,13 +325,65 @@ public class TetherSettings extends SettingsPreferenceFragment
                 }
                 updateState();
             }
+            else if (action.equals(WifiP2pManager.WIFI_P2P_AUTONOMOUS_GO_STATE)) {
+              int subState = -1;
+              ConnectivityManager cm =
+              (ConnectivityManager)getSystemService(Context.CONNECTIVITY_SERVICE);
+              subState = intent.getIntExtra(WifiP2pManager.EXTRA_P2P_AUTO_GO_STATE,
+              WifiP2pManager.WIFI_P2P_AUTONOMOUS_GO_STARTED);
+              if(DBG){
+                Log.d(TAG, "Auto Go Iface name: " + mWifiP2pManager.getP2pTetherInterface());
+              }
+              switch (subState) {
+                case WifiP2pManager.WIFI_P2P_AUTONOMOUS_GO_STARTED:
+                  mAutoGoState = true;
+                  cm.tether(mWifiP2pManager.getP2pTetherInterface());
+                  Toast.makeText(getActivity(), R.string.p2p_go_tether_started,
+                  Toast.LENGTH_SHORT).show();
+                  if(mWifiP2pManager != null) {
+                    mWifiP2pManager.requestPersistentGroupInfo(mChannel, TetherSettings.this);
+                  }
+                  break;
+                case WifiP2pManager.WIFI_P2P_AUTONOMOUS_GO_STOPPED:
+                  /* P2P Auto GO stopped */
+                  mP2pGoTether.setChecked(false);
+                  mP2pGoTether.setSummary("");
+                  mP2pGoTether.setSummary(R.string.p2p_go_tether_disabled);
+                  mAutoGoState = false;
+                  mWifiP2pManager.disableP2pTethering();
+                  break;
+                case WifiP2pManager.WIFI_P2P_AUTONOMOUS_GO_STARTING:
+                  /* P2P Auto GO starting */
+                  if(DBG) {
+                      Log.d(TAG, "P2P-GO MHS Starting");
+                  }
+                  break;
+                case WifiP2pManager.WIFI_P2P_AUTONOMOUS_GO_STOPPED_RESTARTING:
+                  /* P2P Auto GO stopped, restarting */
+                  if(DBG) {
+                      Log.d(TAG, "P2P-GO MHS stopped, restarting");
+                  }
+                  break;
+                default:
+                  Log.e(TAG, "Invalid subState: " + subState + " in the P2P AUTO GO state");
+              }
+              updateState();
+            }
         }
+    }
+
+    // Function to disable tethering on the interface
+    private void disableTetheringForP2P() {
+      ConnectivityManager cm =
+      (ConnectivityManager)getSystemService(Context.CONNECTIVITY_SERVICE);
+      if (cm != null) {
+        cm.untether(mWifiP2pManager.getP2pTetherInterface());
+      }
     }
 
     @Override
     public void onStart() {
         super.onStart();
-
         if (mUnavailable) {
             TextView emptyView = (TextView) getView().findViewById(android.R.id.empty);
             getListView().setEmptyView(emptyView);
@@ -292,7 +392,6 @@ public class TetherSettings extends SettingsPreferenceFragment
             }
             return;
         }
-
         final Activity activity = getActivity();
 
         mMassStorageActive = Environment.MEDIA_SHARED.equals(Environment.getExternalStorageState());
@@ -314,10 +413,22 @@ public class TetherSettings extends SettingsPreferenceFragment
         filter.addAction(BluetoothAdapter.ACTION_STATE_CHANGED);
         activity.registerReceiver(mTetherChangeReceiver, filter);
 
+        filter = new IntentFilter();
+        filter.addAction(WifiP2pManager.WIFI_P2P_AUTONOMOUS_GO_STATE);
+        activity.registerReceiver(mTetherChangeReceiver, filter);
+
+
         if (intent != null) mTetherChangeReceiver.onReceive(activity, intent);
         if (mWifiApEnabler != null) {
             mEnableWifiAp.setOnPreferenceChangeListener(this);
             mWifiApEnabler.resume();
+        }
+
+        if(mAutoGoState) {
+            mP2pGoTether.setChecked(true);
+            setAutoP2PCallSetupInfo();
+        } else {
+            mP2pGoTether.setChecked(false);
         }
 
         updateState();
@@ -576,7 +687,13 @@ public class TetherSettings extends SettingsPreferenceFragment
                 }
                 setUsbTethering(newState);
             }
-        } else if (preference == mBluetoothTether) {
+        }else if (preference == mP2pGoTether)  {
+                if(mP2pGoTether.isChecked()) {
+                    startAutoGO();
+                }else if(mP2pGoTether.isChecked()==false) {
+                    stopAutoGO();
+                }
+         } else if (preference == mBluetoothTether) {
             boolean bluetoothTetherState = mBluetoothTether.isChecked();
 
             if (bluetoothTetherState) {
@@ -646,5 +763,83 @@ public class TetherSettings extends SettingsPreferenceFragment
     @Override
     public int getHelpResource() {
         return R.string.help_url_tether;
+    }
+
+    /* Starts P2P group for Mobile hotspot*/
+    private void startAutoGO() {
+        if (mWifiP2pManager != null ) {
+            mWifiP2pManager.enableP2pTethering();
+            mWifiP2pManager.createGroup(mChannel,
+                    new WifiP2pManager.ActionListener() {
+                    public void onSuccess() {
+                    mP2pGoTether.setChecked(true);
+                    mP2pGoTether.setSummary(R.string.p2p_go_getting_network_info_subtext);
+                    }
+                    public void onFailure(int reason) {
+                    if(DBG){
+                    Log.e(TAG, "Failed to start P2P-GO MHS with reason "
+                        + reason + ".");
+                    }
+                    mAutoGoState=false;
+                    mP2pGoTether.setChecked(false);
+                    mP2pGoTether.setSummary(R.string.p2p_go_hotspot_failed);
+                    }
+                    });
+        }
+    }
+
+    @Override
+    public void onPersistentGroupInfoAvailable(WifiP2pGroupList groups) {
+        for (WifiP2pGroup group: groups.getGroupList()) {
+            String networkName = group.getNetworkName();
+            String passPhrase = group.getPassphrase();
+            if(DBG) {
+                Log.d(TAG,"Group Info Network Name: " + networkName);
+                Log.d(TAG,"Group Info Passphrase: " + passPhrase);
+            }
+            SharedPreferences.Editor ed = mPrefs.edit();
+            ed.putString("auto_network_name", networkName);
+            ed.putString("auto_passphrase", passPhrase);
+            p2pNetworkName=networkName;
+            p2pPassphrase=passPhrase;
+            ed.commit();
+            setAutoP2PCallSetupInfo();
+        }
+    }
+
+    private void setAutoP2PCallSetupInfo() {
+        final Activity activity = getActivity();
+        String networkName=p2pNetworkName;
+        String passPhrase=p2pPassphrase;
+        if(networkName != null && passPhrase != null) {
+            mP2pGoTether.setSummary(Html.fromHtml("<font color='blue'>"
+                                    +activity.getString(CONFIG_SSID)+":</font>"
+                                    +networkName+"<br>"+"<font color='blue'>"
+                                    +activity.getString(CONFIG_PASSPHRASE)+":</font>"
+                                    +passPhrase));
+        }
+    }
+
+    /* stops the Auto P2P Go group for mobile hotspot */
+    private void stopAutoGO() {
+        if (DBG) {
+            Log.d(TAG, "Stopping Autonomous GO");
+        }
+        if (mWifiP2pManager != null) {
+            /* Stop tethering first before removing the group */
+            disableTetheringForP2P();
+            mWifiP2pManager.removeGroup(mChannel,
+                    new WifiP2pManager.ActionListener() {
+                    public void onSuccess() {
+                      if (DBG) {
+                        Log.d(TAG, "Successfully stopped P2P-GO MHS");
+                      }
+                    }
+                    public void onFailure(int reason) {
+                    Log.e(TAG,  "Failed to stop P2P-GO MHS with reason " + reason + ".");
+                    }
+                    });
+
+        }
     }
 }

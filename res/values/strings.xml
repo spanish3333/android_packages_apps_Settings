@@ -1715,7 +1715,8 @@
     <string name="wifi_p2p_cancel_connect_message">Do you want to cancel invitation to connect with <xliff:g id="peer_name">%1$s</xliff:g>?</string>
     <!-- Message text for remembered group deletion-->
     <string name="wifi_p2p_delete_group_message">Forget this group?</string>
-
+    <!-- MHS P2P settings-->
+    <string name="mhs_p2p_go_tether_checkbox_text">Mobile Hotspot on P2P\u2011Go</string>
     <!-- Wifi AP settings-->
     <!-- Label for Wifi tether checkbox. Toggles Access Point on/off -->
     <string name="wifi_tether_checkbox_text">Portable Wi\u2011Fi hotspot</string>
@@ -2714,6 +2715,12 @@
     <string name="usb_tethering_turnon_subtext">Connect to turn on</string>
     <!-- USB errored subtext - shown when USB is broken for some reason -->
     <string name="usb_tethering_errored_subtext">USB tethering error</string>
+    <string name="p2p_go_getting_network_info_subtext">Getting Network Info</string>
+    <string name="p2p_go_hotspot_failed">P2P hotspot failed</string>
+    <string name="p2p_go_tether_disabled">Disabled</string>
+    <string name="p2p_go_tether_started">P2P\u2011Go MHS Started</string>
+    <string name="p2p_go_tether_ssid">SSID</string>
+    <string name="p2p_go_tether_passphrase">Passphrase</string>
 
     <!-- Bluetooth Tethering settings-->
     <!-- Label for bluetooth tether checkbox [CHAR LIMIT=25]-->

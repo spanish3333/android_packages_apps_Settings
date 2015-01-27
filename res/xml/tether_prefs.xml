@@ -36,4 +36,9 @@
         android:title="@string/bluetooth_tether_checkbox_text"
         android:persistent="false" />
 
+    <SwitchPreference
+        android:key="enable_p2pgo_tethering"
+        android:title="@string/mhs_p2p_go_tether_checkbox_text"
+        android:persistent="false" />
+
 </PreferenceScreen>
