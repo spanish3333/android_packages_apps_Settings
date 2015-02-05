@@ -89,7 +89,7 @@ public class WifiP2pSettings extends SettingsPreferenceFragment
     private WifiP2pGroup mConnectedGroup;
     private boolean mLastGroupFormed = false;
     private boolean mGOAuto = false;
-    private boolean mGOStart = false;
+    private static boolean mGOStart = false;
     private boolean mGOWait = false;
     private MenuItem mGOMenu;
 
@@ -115,16 +115,6 @@ public class WifiP2pSettings extends SettingsPreferenceFragment
     private String mSavedDeviceName;
 
     private int mStaDisconnectedScanIntervalWhenP2pConnected = 180000;
-    private int getAutoGoState() {
-        int AutoGo = 0;
-        try {
-            AutoGo = Global.getInt(getContentResolver(), Global.AUTO_GO);
-        } catch (android.provider.Settings.SettingNotFoundException  e) {
-            Log.e(TAG, "Failed to getAutoGoState");
-        }
-        if (DBG) Log.d(TAG, " AutoGo " + AutoGo);
-        return AutoGo;
-    }
 
     private final BroadcastReceiver mReceiver = new BroadcastReceiver() {
         @Override
@@ -194,8 +184,6 @@ public class WifiP2pSettings extends SettingsPreferenceFragment
         final Activity activity = getActivity();
         mWifiP2pManager = (WifiP2pManager) getSystemService(Context.WIFI_P2P_SERVICE);
         mWifiManager = (WifiManager) getSystemService(Context.WIFI_SERVICE);
-        if (getAutoGoState() != 0)
-            mGOStart = true;
         if (mWifiP2pManager != null) {
             mChannel = mWifiP2pManager.initialize(activity, getActivity().getMainLooper(), null);
             if (mChannel == null) {
@@ -668,7 +656,6 @@ public class WifiP2pSettings extends SettingsPreferenceFragment
                          Log.d(TAG, "Successfully started AutoGO");
                     }
                     mGOMenu.setTitle(REMOVE_AUTO_GO);
-                    Global.putInt(getContentResolver(), Global.AUTO_GO, 1);
                     mGOStart = true;
                     Toast.makeText(getActivity(), "P2P GO Started",
                         Toast.LENGTH_SHORT).show();
@@ -697,7 +684,6 @@ public class WifiP2pSettings extends SettingsPreferenceFragment
                     }
                     mGOMenu.setTitle(CREATE_AUTO_GO);
                     mGOStart = false;
-                    Global.putInt(getContentResolver(), Global.AUTO_GO, 0);
                     Toast.makeText(getActivity(), "P2P GO Removed",
                         Toast.LENGTH_SHORT).show();
                 }
