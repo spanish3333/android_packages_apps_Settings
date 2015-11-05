@@ -2722,6 +2722,9 @@
     <string name="p2p_go_tether_ssid">SSID</string>
     <string name="p2p_go_tether_passphrase">Passphrase</string>
 
+    <string name="p2p_go_tether_stopped_restarting">P2P\u2011Go MHS Stopped, restarting...</string>
+    <string name="p2p_go_tether_starting">P2P\u2011Go MHS Starting</string>
+
     <!-- Bluetooth Tethering settings-->
     <!-- Label for bluetooth tether checkbox [CHAR LIMIT=25]-->
     <string name="bluetooth_tether_checkbox_text">Bluetooth tethering</string>
