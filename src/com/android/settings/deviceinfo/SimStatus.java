@@ -40,6 +40,7 @@ import android.util.Log;
 import com.android.internal.logging.MetricsLogger;
 import com.android.internal.telephony.DefaultPhoneNotifier;
 import com.android.internal.telephony.Phone;
+import com.android.internal.telephony.PhoneConstants;
 import com.android.internal.telephony.PhoneFactory;
 import com.android.settings.InstrumentedPreferenceActivity;
 import com.android.settings.R;
@@ -192,6 +193,8 @@ public class SimStatus extends InstrumentedPreferenceActivity {
                         CB_AREA_INFO_SENDER_PERMISSION, null);
                 // Ask CellBroadcastReceiver to broadcast the latest area info received
                 Intent getLatestIntent = new Intent(GET_LATEST_CB_AREA_INFO_ACTION);
+                getLatestIntent.putExtra(PhoneConstants.SUBSCRIPTION_KEY,
+                        mSir.getSubscriptionId());
                 sendBroadcastAsUser(getLatestIntent, UserHandle.ALL,
                         CB_AREA_INFO_SENDER_PERMISSION);
             }
@@ -290,30 +293,24 @@ public class SimStatus extends InstrumentedPreferenceActivity {
     private void updateServiceState(ServiceState serviceState) {
         final int state = serviceState.getState();
         final int dataState = mPhone.getServiceState().getDataRegState();
-        String display = mRes.getString(R.string.radioInfo_unknown);
 
         switch (state) {
-            case ServiceState.STATE_IN_SERVICE:
-                display = mRes.getString(R.string.radioInfo_service_in);
-                break;
             case ServiceState.STATE_OUT_OF_SERVICE:
                 // Set signal strength to 0 when service state is STATE_OUT_OF_SERVICE
                 if (ServiceState.STATE_OUT_OF_SERVICE == dataState) {
                     mSignalStrength.setSummary("0");
                 }
-            case ServiceState.STATE_EMERGENCY_ONLY:
-                // Set summary string of service state to radioInfo_service_out when
-                // service state is both STATE_OUT_OF_SERVICE & STATE_EMERGENCY_ONLY
-                display = mRes.getString(R.string.radioInfo_service_out);
                 break;
             case ServiceState.STATE_POWER_OFF:
-                display = mRes.getString(R.string.radioInfo_service_off);
                 // Also set signal strength to 0
                 mSignalStrength.setSummary("0");
                 break;
         }
+        String voiceDisplay = Utils.getServiceStateString(state, mRes);
 
-        setSummaryText(KEY_SERVICE_STATE, display);
+        String dataDisplay = Utils.getServiceStateString(dataState, mRes);
+
+        setSummaryText(KEY_SERVICE_STATE, "Voice: " + voiceDisplay + " / Data: " + dataDisplay);
 
         if (serviceState.getRoaming()) {
             setSummaryText(KEY_ROAMING_STATE, mRes.getString(R.string.radioInfo_roaming_in));
@@ -394,6 +391,12 @@ public class SimStatus extends InstrumentedPreferenceActivity {
                 }
 
                 mPhone = phone;
+                updateAreaInfo("");
+                Intent getLatestIntent = new Intent(GET_LATEST_CB_AREA_INFO_ACTION);
+                getLatestIntent.putExtra(PhoneConstants.SUBSCRIPTION_KEY,
+                        mSir.getSubscriptionId());
+                sendBroadcastAsUser(getLatestIntent, UserHandle.ALL,
+                        CB_AREA_INFO_SENDER_PERMISSION);
                 mPhoneStateListener = new PhoneStateListener(mSir.getSubscriptionId()) {
                     @Override
                     public void onDataConnectionStateChanged(int state) {
