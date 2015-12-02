@@ -140,6 +140,8 @@ public class TetherSettings extends SettingsPreferenceFragment
     static String p2pPassphrase = null;
 
     private SharedPreferences mPrefs;
+    private static final int CONFIG_STATE_STOPPED_RESTARTING =
+                                    R.string.p2p_go_tether_stopped_restarting;
 
     @Override
     protected int getMetricsCategory() {
@@ -326,42 +328,108 @@ public class TetherSettings extends SettingsPreferenceFragment
                 updateState();
             }
             else if (action.equals(WifiP2pManager.WIFI_P2P_AUTONOMOUS_GO_STATE)) {
-              int subState = -1;
+              int subState = -1, reason = -1;
+              int tetherStatus = 0;
+              final Activity activity = getActivity();
               ConnectivityManager cm =
               (ConnectivityManager)getSystemService(Context.CONNECTIVITY_SERVICE);
               subState = intent.getIntExtra(WifiP2pManager.EXTRA_P2P_AUTO_GO_STATE,
-              WifiP2pManager.WIFI_P2P_AUTONOMOUS_GO_STARTED);
-              if(DBG){
-                Log.d(TAG, "Auto Go Iface name: " + mWifiP2pManager.getP2pTetherInterface());
+                  WifiP2pManager.WIFI_P2P_AUTONOMOUS_GO_STARTED);
+              reason = intent.getIntExtra(
+                  WifiP2pManager.EXTRA_P2P_AUTO_GO_STATE_CHANGE_REASON,
+                  WifiP2pManager.WIFI_P2P_GO_STATE_CHANGE_REASON_RADAR_DETECTED);
+              if(DBG) {
+                  Log.d(TAG, "SubState: " + subState + " reason: " + reason);
               }
               switch (subState) {
                 case WifiP2pManager.WIFI_P2P_AUTONOMOUS_GO_STARTED:
-                  mAutoGoState = true;
-                  cm.tether(mWifiP2pManager.getP2pTetherInterface());
-                  Toast.makeText(getActivity(), R.string.p2p_go_tether_started,
-                  Toast.LENGTH_SHORT).show();
-                  if(mWifiP2pManager != null) {
-                    mWifiP2pManager.requestPersistentGroupInfo(mChannel, TetherSettings.this);
-                  }
+                  // p2p-go hotspot can temporarily go offline
+                  // responding to DFS events, we don't need to
+                  // tamper with tethering in that case
+                  if (reason == WifiP2pManager.WIFI_P2P_GO_STATE_CHANGE_REASON_DEFAULT) {
+                      mAutoGoState = true;
+                      tetherStatus = cm.tether(mWifiP2pManager.getP2pTetherInterface());
+                      if (tetherStatus ==
+                             ConnectivityManager.TETHER_ERROR_NO_ERROR) {
+                          Toast.makeText(getActivity(), R.string.p2p_go_tether_started,
+                              Toast.LENGTH_SHORT).show();
+                          mAutoGoState = true;
+                      } else {
+                          Toast.makeText(getActivity(),
+                              R.string.p2p_go_hotspot_failed,
+                              Toast.LENGTH_SHORT).show();
+                          if(DBG) {
+                             Log.d(TAG,"P2P-GO hotspot tethering failed, reason:" + tetherStatus);
+                          }
+                          // Since tethering failed, there is no point in
+                          // retaining the p2p autonomous group
+                          stopAutoGO();
+                          mAutoGoState = false;
+                      }
+                      if (mAutoGoState == true) {
+                          if (mWifiP2pManager != null) {
+                              mWifiP2pManager.requestPersistentGroupInfo(mChannel, TetherSettings.this);
+                          }
+                      }
+                    } else if ((reason ==
+                                    WifiP2pManager.WIFI_P2P_GO_STATE_CHANGE_REASON_CAC_COMPLETED)
+                                    || (reason ==
+                                     WifiP2pManager.WIFI_P2P_GO_STATE_CHANGE_REASON_CSA_FINISHED)) {
+                       Toast.makeText(getActivity(),
+                           R.string.p2p_go_tether_started,
+                           Toast.LENGTH_SHORT).show();
+                       mAutoGoState = true;
+                    }
+                    if (mWifiP2pManager != null) {
+                        mWifiP2pManager.requestPersistentGroupInfo(mChannel, TetherSettings.this);
+                    }
                   break;
                 case WifiP2pManager.WIFI_P2P_AUTONOMOUS_GO_STOPPED:
                   /* P2P Auto GO stopped */
-                  mP2pGoTether.setChecked(false);
-                  mP2pGoTether.setSummary("");
-                  mP2pGoTether.setSummary(R.string.p2p_go_tether_disabled);
+                  if (mP2pGoTether != null) {
+                      mP2pGoTether.setChecked(false);
+                      mP2pGoTether.setSummary("");
+                      if (activity != null) {
+                          mP2pGoTether.setSummary(
+                             activity.getString(R.string.p2p_go_tether_disabled));
+                      } else {
+                          Log.e(TAG, "**** activity is null ****");
+                      }
+                  }
+                  if (mWifiP2pManager != null) {
+                      mWifiP2pManager.disableP2pTethering();
+                  }
                   mAutoGoState = false;
-                  mWifiP2pManager.disableP2pTethering();
                   break;
                 case WifiP2pManager.WIFI_P2P_AUTONOMOUS_GO_STARTING:
-                  /* P2P Auto GO starting */
+                  // P2P Auto GO starting. This event can come from p2p
+                  // state machine when the underlying driver is performing
+                  // channel availability check (CAC) on a DFS channel
                   if(DBG) {
-                      Log.d(TAG, "P2P-GO MHS Starting");
+                     Log.d(TAG, "P2P-GO MHS Starting");
+                  }
+                  if (mP2pGoTether != null) {
+                      mP2pGoTether.setSummary("");
+                      mP2pGoTether.setSummary(
+                          activity.getString(R.string.p2p_go_tether_starting));
                   }
                   break;
                 case WifiP2pManager.WIFI_P2P_AUTONOMOUS_GO_STOPPED_RESTARTING:
                   /* P2P Auto GO stopped, restarting */
                   if(DBG) {
                       Log.d(TAG, "P2P-GO MHS stopped, restarting");
+                  }
+                  mAutoGoState = false;
+                  if (mP2pGoTether != null) {
+                      mP2pGoTether.setChecked(false);
+                      mP2pGoTether.setEnabled(false);
+                      mP2pGoTether.setSummary("");
+                      if (activity != null) {
+                          mP2pGoTether.setSummary(
+                             activity.getString(CONFIG_STATE_STOPPED_RESTARTING));
+                      } else {
+                          Log.e(TAG, "*** Application context is null ***");
+                      }
                   }
                   break;
                 default:
@@ -374,11 +442,13 @@ public class TetherSettings extends SettingsPreferenceFragment
 
     // Function to disable tethering on the interface
     private void disableTetheringForP2P() {
+      int statusCode = 0;
       ConnectivityManager cm =
       (ConnectivityManager)getSystemService(Context.CONNECTIVITY_SERVICE);
       if (cm != null) {
-        cm.untether(mWifiP2pManager.getP2pTetherInterface());
+          statusCode = cm.untether(mWifiP2pManager.getP2pTetherInterface());
       }
+      Log.e(TAG, "Untether status code: " + statusCode);
     }
 
     @Override
@@ -772,8 +842,8 @@ public class TetherSettings extends SettingsPreferenceFragment
             mWifiP2pManager.createGroup(mChannel,
                     new WifiP2pManager.ActionListener() {
                     public void onSuccess() {
-                    mP2pGoTether.setChecked(true);
                     mP2pGoTether.setSummary(R.string.p2p_go_getting_network_info_subtext);
+                    mP2pGoTether.setChecked(false);
                     }
                     public void onFailure(int reason) {
                     if(DBG){
@@ -790,20 +860,27 @@ public class TetherSettings extends SettingsPreferenceFragment
 
     @Override
     public void onPersistentGroupInfoAvailable(WifiP2pGroupList groups) {
-        for (WifiP2pGroup group: groups.getGroupList()) {
-            String networkName = group.getNetworkName();
-            String passPhrase = group.getPassphrase();
-            if(DBG) {
-                Log.d(TAG,"Group Info Network Name: " + networkName);
-                Log.d(TAG,"Group Info Passphrase: " + passPhrase);
-            }
-            SharedPreferences.Editor ed = mPrefs.edit();
-            ed.putString("auto_network_name", networkName);
-            ed.putString("auto_passphrase", passPhrase);
-            p2pNetworkName=networkName;
-            p2pPassphrase=passPhrase;
-            ed.commit();
-            setAutoP2PCallSetupInfo();
+        if (mAutoGoState) {
+            for (WifiP2pGroup group: groups.getGroupList()) {
+                 String networkName = group.getNetworkName();
+                 String passPhrase = group.getPassphrase();
+                 if(DBG) {
+                    Log.d(TAG,"Group Info Network Name: " + networkName);
+                    Log.d(TAG,"Group Info Passphrase: " + passPhrase);
+                 }
+                 SharedPreferences.Editor ed = mPrefs.edit();
+                 ed.putString("auto_network_name", networkName);
+                 ed.putString("auto_passphrase", passPhrase);
+                 p2pNetworkName=networkName;
+                 p2pPassphrase=passPhrase;
+                 ed.commit();
+                 setAutoP2PCallSetupInfo();
+        }
+        // There is no point in enabling the tethering UI before this 	911
+        if (mP2pGoTether != null) {
+            mP2pGoTether.setEnabled(true);
+            mP2pGoTether.setChecked(true);
+        }
         }
     }
 
