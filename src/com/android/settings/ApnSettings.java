@@ -228,9 +228,14 @@ public class ApnSettings extends SettingsPreferenceFragment implements
         final String mccmnc = mSubscriptionInfo == null ? ""
             : tm.getIccOperatorNumericForData(mSubscriptionInfo.getSubscriptionId());
         Log.d(TAG, "mccmnc = " + mccmnc);
-        final String where = "numeric=\""
+        String where = "numeric=\""
             + mccmnc
             + "\" AND NOT (type='ia' AND (apn=\"\" OR apn IS NULL))";
+
+        if (getActivity().getResources().getBoolean(R.bool.config_hide_ims_apns)) {
+            where += " and type <>\"" + PhoneConstants.APN_TYPE_IMS + "\"";
+        }
+        Log.d(TAG, "fillList: where= " + where);
 
         Cursor cursor = getContentResolver().query(Telephony.Carriers.CONTENT_URI, new String[] {
                 "_id", "name", "apn", "type", "mvno_type", "mvno_match_data", "read_only"}, where,
